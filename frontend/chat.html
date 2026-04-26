@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SecureLine — Chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d1117; color: #e6edf3; font-family: 'Courier New', monospace; display: flex; height: 100vh; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar { width: 220px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; }
+    .sidebar-header { padding: 14px 16px; border-bottom: 1px solid #30363d; }
+    .logo { font-size: 1rem; font-weight: bold; color: #58a6ff; }
+    .me { font-size: 0.75rem; color: #8b949e; margin-top: 4px; }
+    .channel-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.65rem; font-weight: bold; margin-top: 6px; }
+    .ws { background: #1a3a1a; color: #3fb950; }
+    .rest { background: #3a2a00; color: #d29922; }
+    .section-label { padding: 8px 16px; font-size: 0.7rem; color: #6e7681; letter-spacing: 1px; }
+    .user-item { padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 0.85rem; border-left: 3px solid transparent; }
+    .user-item:hover, .user-item.active { background: #1f2937; border-left-color: #58a6ff; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: #21262d; border: 1px solid #30363d; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; flex-shrink: 0; }
+    .sidebar-footer { margin-top: auto; padding: 12px 16px; border-top: 1px solid #30363d; }
+    .btn-sm { background: #21262d; border: 1px solid #30363d; color: #8b949e; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 0.72rem; font-family: inherit; width: 100%; margin-bottom: 6px; }
+    .btn-sm:hover { background: #30363d; color: #e6edf3; }
+
+    /* Chat */
+    .chat-area { flex: 1; display: flex; flex-direction: column; }
+    .chat-header { padding: 14px 20px; background: #161b22; border-bottom: 1px solid #30363d; font-size: 0.9rem; color: #58a6ff; display: flex; align-items: center; gap: 10px; }
+    .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .msg-wrap { display: flex; }
+    .msg-wrap.mine { justify-content: flex-end; }
+    .bubble { max-width: 65%; background: #21262d; border: 1px solid #30363d; border-radius: 10px; padding: 10px 14px; }
+    .bubble.mine { background: #1f3a5f; border-color: #388bfd; }
+    .plaintext { font-size: 0.9rem; margin-bottom: 4px; }
+    .cipher { font-size: 0.65rem; color: #8b949e; word-break: break-all; margin-bottom: 4px; }
+    .meta { font-size: 0.68rem; color: #6e7681; }
+    .ch-ws { color: #3fb950; font-weight: bold; }
+    .ch-rest { color: #d29922; font-weight: bold; }
+    .form { display: flex; padding: 12px; border-top: 1px solid #30363d; gap: 8px; }
+    .form input { flex: 1; background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 10px 14px; color: #e6edf3; font-size: 0.9rem; outline: none; font-family: inherit; }
+    .form input:focus { border-color: #58a6ff; }
+    .form button { background: #238636; color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-family: inherit; }
+
+    /* Panels */
+    .panel { width: 300px; background: #161b22; border-left: 1px solid #30363d; display: flex; flex-direction: column; }
+    .panel-tabs { display: flex; border-bottom: 1px solid #30363d; }
+    .ptab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 0.75rem; color: #8b949e; border-bottom: 2px solid transparent; }
+    .ptab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+    .panel-body { flex: 1; overflow-y: auto; padding: 10px; font-size: 0.72rem; }
+    .log-entry { padding: 6px 8px; border-bottom: 1px solid #21262d; line-height: 1.5; }
+    .log-entry .event { color: #58a6ff; }
+    .log-entry .hash { color: #3fb950; font-size: 0.65rem; }
+    .log-entry .tampered { color: #f85149; font-weight: bold; }
+    .threat-entry { padding: 6px 8px; border-bottom: 1px solid #21262d; }
+    .threat-entry .type { font-weight: bold; }
+    .sev-HIGH { color: #f85149; }
+    .sev-CRITICAL { color: #ff0000; }
+    .sev-MEDIUM { color: #d29922; }
+    .sev-LOW { color: #8b949e; }
+    .alert-banner { background: #3a0000; border: 1px solid #f85149; border-radius: 6px; padding: 8px 12px; margin: 8px; font-size: 0.78rem; color: #f85149; display: none; }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">🔐 SecureLine</div>
+    <div class="me" id="me-label">...</div>
+    <div class="channel-badge ws" id="channel-badge">● WS Live</div>
+  </div>
+  <div class="section-label">ONLINE USERS</div>
+  <div id="user-list"></div>
+  <div class="sidebar-footer">
+    <button class="btn-sm" onclick="simulateJam()">⚡ Simulate Jamming</button>
+    <button class="btn-sm" onclick="restoreWS()">🔄 Restore WebSocket</button>
+    <button class="btn-sm" onclick="logout()">⏏ Logout</button>
+  </div>
+</div>
+
+<!-- Chat -->
+<div class="chat-area">
+  <div class="chat-header" id="chat-header">Select a user to start a secure session</div>
+  <div class="alert-banner" id="threat-banner"></div>
+  <div class="messages" id="messages"></div>
+  <form class="form" onsubmit="sendMessage(event)">
+    <input id="msg-input" placeholder="Type an encrypted message..." disabled />
+    <button type="submit">Send</button>
+  </form>
+</div>
+
+<!-- Right panel -->
+<div class="panel">
+  <div class="panel-tabs">
+    <div class="ptab active" onclick="switchPanel('logs')">📋 Audit Log</div>
+    <div class="ptab" onclick="switchPanel('threats')">🚨 Threats</div>
+  </div>
+  <div class="panel-body" id="panel-logs"></div>
+  <div class="panel-body" id="panel-threats" style="display:none"></div>
+</div>
+
+<script>
+  const API = "http://localhost:8888";
+  const token = sessionStorage.getItem("token");
+  const username = sessionStorage.getItem("username");
+  const myPublicKey = sessionStorage.getItem("myPublicKey");
+  const myPrivateKeyHex = sessionStorage.getItem("privateKey");
+
+  if (!token || !username) window.location.href = "/";
+
+  document.getElementById("me-label").textContent = `👤 ${username}`;
+
+  let selectedUser = null;
+  let selectedUserPublicKey = null;
+  let ws = null;
+  let wsJammed = false;
+  let pollInterval = null;
+  const messages = [];
+  const peerKeys = {};   // username -> publicKey hex
+
+  // ── WebCrypto E2E helpers ──────────────────────────────────────────────────
+
+  async function importPublicKey(hex) {
+    const raw = hex2buf(hex);
+    return crypto.subtle.importKey("raw", raw, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  }
+
+  async function importPrivateKey(hex) {
+    const raw = hex2buf(hex);
+    return crypto.subtle.importKey("pkcs8", raw, { name: "ECDH", namedCurve: "P-256" }, false, ["deriveKey", "deriveBits"]);
+  }
+
+  async function deriveAESKey(myPrivHex, theirPubHex) {
+    const priv = await importPrivateKey(myPrivHex);
+    const pub = await importPublicKey(theirPubHex);
+    return crypto.subtle.deriveKey(
+      { name: "ECDH", public: pub },
+      priv,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+
+  async function encryptMsg(plaintext, theirPubHex) {
+    const key = await deriveAESKey(myPrivateKeyHex, theirPubHex);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext));
+    const combined = new Uint8Array(iv.byteLength + ct.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(ct), iv.byteLength);
+    return btoa(String.fromCharCode(...combined));
+  }
+
+  async function decryptMsg(b64payload, senderPubHex) {
+    try {
+      const key = await deriveAESKey(myPrivateKeyHex, senderPubHex);
+      const raw = Uint8Array.from(atob(b64payload), c => c.charCodeAt(0));
+      const iv = raw.slice(0, 12);
+      const ct = raw.slice(12);
+      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+      return new TextDecoder().decode(pt);
+    } catch { return "[decryption failed]"; }
+  }
+
+  function hex2buf(hex) {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+    return bytes.buffer;
+  }
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+
+  function connectWS() {
+    ws = new WebSocket(`ws://localhost:8888/ws/${token}`);
+
+    ws.onopen = () => {
+      setChannel("WS");
+      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    };
+
+    ws.onmessage = async (e) => {
+      const data = JSON.parse(e.data);
+
+      if (data.type === "user_list") {
+        await refreshUserList(data.users);
+      } else if (data.type === "message" || data.type === "sent_confirm") {
+        await handleIncoming(data);
+      } else if (data.type === "threat_alert") {
+        showThreatBanner(data.threat);
+      }
+    };
+
+    ws.onclose = () => {
+      if (!wsJammed) setTimeout(connectWS, 3000);
+      else startRESTPolling();
+    };
+  }
+
+  async function refreshUserList(users) {
+    // Fetch public keys for all users
+    const res = await fetch(`${API}/api/users`, { headers: { Authorization: `Bearer ${token}` } });
+    const list = await res.json();
+    list.forEach(u => peerKeys[u.username] = u.public_key);
+
+    const container = document.getElementById("user-list");
+    container.innerHTML = "";
+    users.filter(u => u !== username).forEach(u => {
+      const div = document.createElement("div");
+      div.className = `user-item${selectedUser === u ? " active" : ""}`;
+      div.innerHTML = `<div class="avatar">${u[0].toUpperCase()}</div>${u}`;
+      div.onclick = () => selectUser(u);
+      container.appendChild(div);
+    });
+  }
+
+  function selectUser(u) {
+    selectedUser = u;
+    selectedUserPublicKey = peerKeys[u];
+    document.getElementById("chat-header").textContent = `🔒 Encrypted session → ${u}`;
+    document.getElementById("msg-input").disabled = false;
+    document.querySelectorAll(".user-item").forEach(el => el.classList.toggle("active", el.textContent.trim() === u));
+    renderMessages();
+  }
+
+  async function handleIncoming(data) {
+    const isMine = data.type === "sent_confirm";
+    const senderPub = isMine ? myPublicKey : peerKeys[data.from];
+    const plaintext = senderPub ? await decryptMsg(data.encrypted_payload, senderPub) : "[key missing]";
+
+    messages.push({
+      from: isMine ? "me" : data.from,
+      to: isMine ? data.to : username,
+      plaintext,
+      cipher: data.encrypted_payload.slice(0, 48) + "...",
+      channel: data.channel || "WS",
+      ts: new Date().toLocaleTimeString(),
+    });
+    renderMessages();
+    refreshPanel();
+  }
+
+  function renderMessages() {
+    const container = document.getElementById("messages");
+    const relevant = messages.filter(m =>
+      (m.from === "me" && m.to === selectedUser) ||
+      (m.from === selectedUser && m.to === username)
+    );
+    container.innerHTML = relevant.map(m => `
+      <div class="msg-wrap ${m.from === "me" ? "mine" : ""}">
+        <div class="bubble ${m.from === "me" ? "mine" : ""}">
+          <div class="plaintext">${m.plaintext}</div>
+          <div class="cipher">🔐 ${m.cipher}</div>
+          <div class="meta">${m.from === "me" ? "You" : m.from} · ${m.ts} · <span class="ch-${m.channel.split("→")[0]}">${m.channel}</span></div>
+        </div>
+      </div>
+    `).join("");
+    container.scrollTop = container.scrollHeight;
+  }
+
+  async function sendMessage(e) {
+    e.preventDefault();
+    const input = document.getElementById("msg-input");
+    const text = input.value.trim();
+    if (!text || !selectedUser || !selectedUserPublicKey) return;
+
+    const encrypted = await encryptMsg(text, selectedUserPublicKey);
+    input.value = "";
+
+    if (!wsJammed && ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "message", to: selectedUser, encrypted_payload: encrypted }));
+    } else {
+      // REST fallback
+      await fetch(`${API}/api/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: selectedUser, encrypted_payload: encrypted, from_user: username, token }),
+      });
+      messages.push({ from: "me", to: selectedUser, plaintext: text, cipher: encrypted.slice(0, 48) + "...", channel: "REST", ts: new Date().toLocaleTimeString() });
+      renderMessages();
+    }
+  }
+
+  // ── REST fallback polling ──────────────────────────────────────────────────
+
+  function startRESTPolling() {
+    setChannel("REST");
+    if (pollInterval) return;
+    pollInterval = setInterval(async () => {
+      const res = await fetch(`${API}/api/poll?token=${token}`);
+      const data = await res.json();
+      for (const msg of data.messages) {
+        const senderPub = peerKeys[msg.from];
+        const plaintext = senderPub ? await decryptMsg(msg.encrypted_payload, senderPub) : "[key missing]";
+        messages.push({ from: msg.from, to: username, plaintext, cipher: msg.encrypted_payload.slice(0, 48) + "...", channel: "REST", ts: new Date().toLocaleTimeString() });
+        renderMessages();
+      }
+    }, 2000);
+  }
+
+  // ── Jamming simulation ─────────────────────────────────────────────────────
+
+  function simulateJam() {
+    wsJammed = true;
+    ws?.close();
+    setChannel("REST");
+    startRESTPolling();
+  }
+
+  function restoreWS() {
+    wsJammed = false;
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    connectWS();
+  }
+
+  function setChannel(ch) {
+    const badge = document.getElementById("channel-badge");
+    badge.className = `channel-badge ${ch === "WS" ? "ws" : "rest"}`;
+    badge.textContent = ch === "WS" ? "● WS Live" : "● REST Fallback";
+  }
+
+  // ── Threat banner ──────────────────────────────────────────────────────────
+
+  function showThreatBanner(threat) {
+    const banner = document.getElementById("threat-banner");
+    banner.textContent = `🚨 THREAT DETECTED: ${threat.threat} (${threat.severity}) — ${threat.detail}`;
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 6000);
+    refreshPanel();
+  }
+
+  // ── Panels ─────────────────────────────────────────────────────────────────
+
+  function switchPanel(tab) {
+    document.querySelectorAll(".ptab").forEach((t, i) => t.classList.toggle("active", (i === 0) === (tab === "logs")));
+    document.getElementById("panel-logs").style.display = tab === "logs" ? "block" : "none";
+    document.getElementById("panel-threats").style.display = tab === "threats" ? "block" : "none";
+    refreshPanel(tab);
+  }
+
+  async function refreshPanel(tab = "logs") {
+    if (tab === "logs") {
+      const res = await fetch(`${API}/api/logs`, { headers: { Authorization: `Bearer ${token}` } });
+      const logs = await res.json();
+      document.getElementById("panel-logs").innerHTML = logs.reverse().map(l => `
+        <div class="log-entry">
+          <span class="event">${l.event}</span> · ${l.actor}<br/>
+          <span class="hash">${l.current_hash}</span>
+          ${l.tampered ? '<span class="tampered"> ⚠ TAMPERED</span>' : ''}
+          <br/><span style="color:#6e7681">${l.timestamp}</span>
+        </div>
+      `).join("");
+    } else {
+      const res = await fetch(`${API}/api/threats`, { headers: { Authorization: `Bearer ${token}` } });
+      const threats = await res.json();
+      document.getElementById("panel-threats").innerHTML = threats.length === 0
+        ? '<div style="color:#6e7681;padding:12px">No threats detected</div>'
+        : threats.map(t => `
+          <div class="threat-entry">
+            <span class="type sev-${t.severity}">${t.threat_type}</span> · ${t.actor}<br/>
+            <span style="color:#8b949e">${t.detail}</span><br/>
+            <span style="color:#6e7681">${t.timestamp}</span>
+          </div>
+        `).join("");
+    }
+  }
+
+  function logout() {
+    sessionStorage.clear();
+    window.location.href = "/";
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  connectWS();
+  setInterval(() => refreshPanel("logs"), 5000);
+</script>
+</body>
+</html>

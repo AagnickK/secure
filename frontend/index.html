@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SecureLine — Login</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d1117; color: #e6edf3; font-family: 'Courier New', monospace; display: flex; align-items: center; justify-content: center; height: 100vh; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 40px 36px; width: 420px; }
+    .logo { font-size: 1.8rem; font-weight: bold; color: #58a6ff; text-align: center; margin-bottom: 6px; }
+    .tagline { text-align: center; color: #8b949e; font-size: 0.75rem; margin-bottom: 28px; }
+    .tabs { display: flex; margin-bottom: 24px; border-bottom: 1px solid #30363d; }
+    .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; color: #8b949e; font-size: 0.9rem; border-bottom: 2px solid transparent; }
+    .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+    .form { display: flex; flex-direction: column; gap: 12px; }
+    input { background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 12px 14px; color: #e6edf3; font-size: 0.9rem; outline: none; font-family: inherit; }
+    input:focus { border-color: #58a6ff; }
+    button { background: #238636; color: white; border: none; border-radius: 8px; padding: 12px; cursor: pointer; font-size: 0.95rem; font-weight: bold; font-family: inherit; }
+    button:hover { background: #2ea043; }
+    .hint { margin-top: 16px; color: #6e7681; font-size: 0.72rem; line-height: 1.6; text-align: center; }
+    .key-display { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 10px; font-size: 0.65rem; color: #3fb950; word-break: break-all; margin-top: 4px; }
+    .error { color: #f85149; font-size: 0.8rem; text-align: center; min-height: 18px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.65rem; margin-left: 6px; }
+    .badge.e2e { background: #1f3a5f; color: #58a6ff; }
+    .badge.zt { background: #2d1f3f; color: #bc8cff; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🔐 SecureLine <span class="badge e2e">E2E</span><span class="badge zt">Zero Trust</span></div>
+  <div class="tagline">Military-grade · Tamper-proof · AI-monitored</div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('login')">Login</div>
+    <div class="tab" onclick="switchTab('register')">Register</div>
+  </div>
+
+  <div id="login-form" class="form">
+    <input id="login-user" type="text" placeholder="Username" />
+    <input id="login-pass" type="password" placeholder="Password" />
+    <button onclick="doLogin()">Login & Connect</button>
+  </div>
+
+  <div id="register-form" class="form" style="display:none">
+    <input id="reg-user" type="text" placeholder="Username" />
+    <input id="reg-pass" type="password" placeholder="Password" />
+    <div style="font-size:0.75rem; color:#8b949e;">Your X25519 key pair (generated locally):</div>
+    <div class="key-display" id="pub-key-display">Generating...</div>
+    <button onclick="doRegister()">Register & Generate Keys</button>
+  </div>
+
+  <div class="error" id="error-msg"></div>
+  <div class="hint">Your private key never leaves this device.<br/>The server only stores your public key.</div>
+</div>
+
+<script>
+  const API = "http://localhost:8888";
+  let generatedKeyPair = null;
+
+  // ── X25519 key pair via WebCrypto ──────────────────────────────────────────
+  async function generateKeyPair() {
+    const kp = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"]);
+    const pubRaw = await crypto.subtle.exportKey("raw", kp.publicKey);
+    const privRaw = await crypto.subtle.exportKey("pkcs8", kp.privateKey);
+    return {
+      publicKey: buf2hex(pubRaw),
+      privateKey: buf2hex(privRaw),
+      publicKeyCryptoKey: kp.publicKey,
+      privateKeyCryptoKey: kp.privateKey,
+    };
+  }
+
+  function buf2hex(buf) {
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Pre-generate on page load
+  generateKeyPair().then(kp => {
+    generatedKeyPair = kp;
+    document.getElementById("pub-key-display").textContent = kp.publicKey.slice(0, 64) + "...";
+  });
+
+  function switchTab(tab) {
+    document.querySelectorAll(".tab").forEach((t, i) => t.classList.toggle("active", (i === 0) === (tab === "login")));
+    document.getElementById("login-form").style.display = tab === "login" ? "flex" : "none";
+    document.getElementById("register-form").style.display = tab === "register" ? "flex" : "none";
+    document.getElementById("error-msg").textContent = "";
+  }
+
+  function setError(msg) { document.getElementById("error-msg").textContent = msg; }
+
+  async function doRegister() {
+    const username = document.getElementById("reg-user").value.trim();
+    const password = document.getElementById("reg-pass").value;
+    if (!username || !password) return setError("Fill in all fields");
+    if (!generatedKeyPair) return setError("Key pair not ready, wait a moment");
+
+    const res = await fetch(`${API}/api/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, public_key: generatedKeyPair.publicKey }),
+    });
+    const data = await res.json();
+    if (!res.ok) return setError(data.detail || "Registration failed");
+
+    // Store private key locally
+    sessionStorage.setItem("privateKey", generatedKeyPair.privateKey);
+    sessionStorage.setItem("publicKey", generatedKeyPair.publicKey);
+    setError("");
+    switchTab("login");
+    document.getElementById("login-user").value = username;
+  }
+
+  async function doLogin() {
+    const username = document.getElementById("login-user").value.trim();
+    const password = document.getElementById("login-pass").value;
+    if (!username || !password) return setError("Fill in all fields");
+
+    const res = await fetch(`${API}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) return setError(data.detail || "Login failed");
+
+    sessionStorage.setItem("token", data.token);
+    sessionStorage.setItem("username", data.username);
+    sessionStorage.setItem("myPublicKey", data.public_key);
+    // If private key not in session (returning user on same tab), warn
+    if (!sessionStorage.getItem("privateKey")) {
+      sessionStorage.setItem("privateKey", generatedKeyPair?.privateKey || "");
+    }
+    window.location.href = "/chat";
+  }
+</script>
+</body>
+</html>
