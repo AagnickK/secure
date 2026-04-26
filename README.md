@@ -12,7 +12,7 @@ A real-time, tamper-proof, multi-channel communication system featuring end-to-e
 ┌─────────────────────────────────────────────────────────────┐
 │                        BROWSER (2 tabs)                     │
 │                                                             │
-│   ┌─────────────────┐         ┌─────────────────┐          │
+│   ┌─────────────────┐         ┌──────────────────┐          │
 │   │   index.html    │         │   chat.html      │          │
 │   │  Login/Register │         │  Chat UI +       │          │
 │   │  Key Pair Gen   │         │  Audit Log Panel │          │
@@ -23,15 +23,15 @@ A real-time, tamper-proof, multi-channel communication system featuring end-to-e
              │                           │
              ▼                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  FastAPI Backend (main.py)                   │
+│                  FastAPI Backend (main.py)                  │
 │                                                             │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────┐  │
-│  │  auth.py │  │log_chain │  │  threat_  │  │ crypto_  │  │
-│  │  JWT +   │  │  .py     │  │detection  │  │ utils.py │  │
-│  │  Device  │  │  SHA-256 │  │  .py      │  │ AES-GCM  │  │
-│  │  Finger- │  │  Hash    │  │  Rule-    │  │ X25519   │  │
-│  │  print   │  │  Chain   │  │  Based AI │  │          │  │
-│  └──────────┘  └──────────┘  └───────────┘  └──────────┘  │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────┐    │
+│  │  auth.py │  │log_chain │  │  threat_  │  │ crypto_  │    │
+│  │  JWT +   │  │  .py     │  │detection  │  │ utils.py │    │
+│  │  Device  │  │  SHA-256 │  │  .py      │  │ AES-GCM  │    │
+│  │  Finger- │  │  Hash    │  │  Rule-    │  │ X25519   │    │
+│  │  print   │  │  Chain   │  │  Based AI │  │          │    │
+│  └──────────┘  └──────────┘  └───────────┘  └──────────┘    │
 │                                                             │
 │                    database.py (SQLite)                     │
 │           users | audit_logs | threat_logs                  │
@@ -217,5 +217,6 @@ Open **two browser tabs** (or one normal + one incognito), register two users, a
 - `sha256_crypt` is used for password hashing — consider `argon2` for production workloads
 - CORS is set to `*` for demo purposes — restrict to specific origins in production
 - SQLite is used for simplicity — replace with PostgreSQL for production
-#   s e c u r e  
+#   s e c u r e 
+ 
  
